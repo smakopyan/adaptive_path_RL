@@ -1,0 +1,25 @@
+# Core dependencies
+numpy>=1.21.0
+scipy>=1.7.0
+
+# Deep Learning
+torch>=1.9.0
+torchvision>=0.10.0
+
+# Computer Vision
+opencv-python>=4.5.0
+
+# Reinforcement Learning
+gymnasium>=0.27.0
+
+# Note: The following packages are provided by ROS2 installation and should not be installed via pip:
+# - rclpy (ROS2 Python client library)
+# - geometry_msgs
+# - nav_msgs
+# - sensor_msgs
+# - std_srvs
+# - visualization_msgs
+# - ament_index_python
+# 
+# Install ROS2 Humble or newer before using this project:
+# https://docs.ros.org/en/humble/Installation.html

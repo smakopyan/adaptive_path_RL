@@ -15,6 +15,7 @@ setup(
                                                 'launch/main.launch.py']),
         ('share/' + package_name + '/worlds', ['worlds/maze.sdf']),
         ('share/' + package_name + '/maps', ['maps/map.pgm', 'maps/map.yaml']),
+        ('share/' + package_name + '/rviz', ['rviz/def.rvizs']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

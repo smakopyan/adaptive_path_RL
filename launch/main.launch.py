@@ -80,18 +80,18 @@ def generate_launch_description():
             ])
     
 
-    # rviz_config_dir = os.path.join(
-    #     get_package_share_directory('maze-dfs'),
-    #     'config',
-    #     'single_robot_view.rviz')
+    rviz_config_dir = os.path.join(
+        get_package_share_directory('adaptive_path_RL'),
+        'rviz',
+        'def.rviz')
     
-    # rviz_node = Node(
-    #                 package='rviz2',
-    #                 executable='rviz2',
-    #                 name='rviz2',
-    #                 arguments=['-d', rviz_config_dir],
-    #                 parameters=[{'use_sim_time': True}],
-    #                 output='screen')
+    rviz_node = Node(
+                    package='rviz2',
+                    executable='rviz2',
+                    name='rviz2',
+                    arguments=['-d', rviz_config_dir],
+                    parameters=[{'use_sim_time': True}],
+                    output='screen')
     
 
 
@@ -117,7 +117,7 @@ def generate_launch_description():
     ld.add_action(robot_state_publisher_cmd)
     ld.add_action(spawn_turtlebot_cmd)
     ld.add_action(amcl)
-    # ld.add_action(rviz_node)
+    ld.add_action(rviz_node)
 
     return ld
 
