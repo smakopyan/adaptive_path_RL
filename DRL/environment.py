@@ -24,7 +24,7 @@ from visualization_msgs.msg import Marker
 from navigation_src.D_star import DStar
 from navigation_src.PMP import PMP
 
-EXPANSION_SIZE = 20
+EXPANSION_SIZE = 22
 
 
 def costmap(data, width, height):
@@ -55,6 +55,7 @@ class EnvConfig:
     wind_w_max: float = 0.15
     battery_min: float = 0.75
     battery_max: float = 1.00
+    scan_samples: int = 360
 
 
 @dataclass
@@ -176,7 +177,8 @@ class Environment(gym.Env):
         self.ros_cfg = ros or RosConfig()
 
         self.action_space = spaces.Box(low=np.array([-1.0, -1.0], dtype=np.float32), high=np.array([1.0, 1.0], dtype=np.float32), dtype=np.float32)
-        self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=(10,), dtype=np.float32)
+        obs_dim = 8 + int(self.cfg.scan_samples) + 1 + 2
+        self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=(obs_dim,), dtype=np.float32)
 
         self.node = Ros2Bridge(self.ros_cfg)
         self.map_origin = (-6.85, -7.83)
@@ -191,6 +193,7 @@ class Environment(gym.Env):
         self.last_dist = float("inf")
         self.fixed_goal_grid = None
         self.fixed_goal_world = None
+        self.prev_action = np.zeros(2, dtype=np.float32)
 
     def reset(self, *, seed=None, options=None):
         if seed is not None:
@@ -218,7 +221,6 @@ class Environment(gym.Env):
                 raise RuntimeError(f"Goal is out of map bounds: {goal_g}")
 
             local_grid = self.grid.copy()
-            # Robot cell may be occupied in inflated map; free start for planner bootstrap.
             local_grid[start_g[1], start_g[0]] = 0
             # planner = DStar((start_g[1], start_g[0]), (goal_g[1], goal_g[0]), local_grid)
 
@@ -253,6 +255,7 @@ class Environment(gym.Env):
         self.slip_ang = np.random.uniform(0.0, self.cfg.slip_ang_max)
         self.wind_bias_v = np.random.uniform(-self.cfg.wind_v_max, self.cfg.wind_v_max)
         self.wind_bias_w = np.random.uniform(-self.cfg.wind_w_max, self.cfg.wind_w_max)
+        self.prev_action = np.zeros(2, dtype=np.float32)
         return self._get_obs(), {}
 
     def _apply_disturbances(self, v: float, w: float) -> Tuple[float, float]:
@@ -293,6 +296,7 @@ class Environment(gym.Env):
             rclpy.spin_once(self.node, timeout_sec=0.02)
             elapsed += 0.02
 
+        self.prev_action = np.clip(action, -1.0, 1.0)
         obs = self._get_obs()
         dist = self._distance_to_goal()
         progress = self.last_dist - dist
@@ -305,33 +309,36 @@ class Environment(gym.Env):
         reached = dist < self.cfg.goal_tolerance
         timeout = self.steps >= self.cfg.max_steps
 
+        dist_norm = np.clip(dist / 5.0, 0.0, 1.0)
         reward = (
-            8.0 * progress
-            - 0.25 * path_error
-            - 0.10 * abs(heading_error)
-            - 0.02 * np.linalg.norm(action)
+            2.0 * progress
+            + 0.10 * (1.0 - dist_norm)
+            - 0.05 * path_error
+            - 0.02 * abs(heading_error)
+            - 0.005 * np.linalg.norm(action)
             - 0.01
         )
 
         safe_dist = 0.50
         danger_dist = 0.25
-
+        reward /= dist_norm ** 2 
         if min_scan < safe_dist:
-            reward -= 1.5 * ((safe_dist - min_scan) / safe_dist) ** 2
+            reward -= 0.5 * ((safe_dist - min_scan) / safe_dist) ** 2
 
         if min_scan < danger_dist:
-            reward -= 3.0 * ((danger_dist - min_scan) / danger_dist) ** 2
+            reward -= 1.0 * ((danger_dist - min_scan) / danger_dist) ** 2
 
         if collision:
-            reward -= 60.0
-
+            reward -= 20.0
         if reached:
-            reward += 100.0
-        
-        reward /= 100
+            reward += 40.0
+
+        if timeout:
+            reward -= 5.0
         terminated = collision or reached
         truncated = timeout
 
+        reward *= self.steps
         info: Dict[str, float] = {
             "dist": float(dist),
             "base_v": float(base_v),
@@ -351,7 +358,7 @@ class Environment(gym.Env):
         if terminated or truncated:
             self.node.publish_cmd(0.0, 0.0)
 
-        return obs, float(reward), bool(terminated), bool(truncated), info
+        return obs, float(reward/100), bool(terminated), bool(truncated), info
 
     def close(self):
         self.node.publish_cmd(0.0, 0.0)
@@ -475,7 +482,6 @@ class Environment(gym.Env):
                 continue
 
             local_grid = self.grid.copy()
-            # Keep start traversable for D* even with obstacle inflation.
             local_grid[start_g[1], start_g[0]] = 0
 
             planner = DStar((start_g[1], start_g[0]), (goal_g[1], goal_g[0]), local_grid)
@@ -504,17 +510,21 @@ class Environment(gym.Env):
 
     def _scan_features(self):
         if self.node.scan_msg is None:
-            return 1.0, 1.0, 1.0, 1.0
+            scan = np.full(int(self.cfg.scan_samples), 1.0, dtype=np.float32)
+            return scan, 1.0
 
         ranges = np.array(self.node.scan_msg.ranges, dtype=np.float32)
         ranges[~np.isfinite(ranges)] = 10.0
         ranges[ranges <= 0.0] = 10.0
 
-        n = len(ranges)
-        front = np.min(np.concatenate([ranges[: n // 12], ranges[-n // 12 :]]))
         all_min = np.min(ranges)
         norm = 3.5
-        return float(np.clip(front / norm, 0.0, 1.0)), 1.0, 1.0, float(np.clip(all_min / norm, 0.0, 1.0))
+        scan = np.clip(ranges / norm, 0.0, 1.0)
+        if scan.shape[0] != int(self.cfg.scan_samples):
+            src_idx = np.linspace(0.0, 1.0, num=scan.shape[0], dtype=np.float32)
+            dst_idx = np.linspace(0.0, 1.0, num=int(self.cfg.scan_samples), dtype=np.float32)
+            scan = np.interp(dst_idx, src_idx, scan).astype(np.float32)
+        return scan, float(np.clip(all_min / norm, 0.0, 1.0))
 
     def _get_obs(self):
         x, y = self._robot_world_xy()
@@ -529,7 +539,8 @@ class Environment(gym.Env):
 
         base_v, base_w = self.pmp.control(x, y, yaw)
         path_error, path_heading_error, _ = self._compute_path_errors()
-        front_scan, _, _, min_scan = self._scan_features()
+        scan_norm, min_scan = self._scan_features()
+        lidar_features = (2.0 * scan_norm - 1.0).tolist() + [2.0 * min_scan - 1.0]
 
         return np.array([
             np.clip(dx / 5.0, -1.0, 1.0),
@@ -540,6 +551,7 @@ class Environment(gym.Env):
             np.clip(path_heading_error / math.pi, -1.0, 1.0),
             np.clip(base_v / max(1e-5, self.cfg.linear_limit), 0.0, 1.0),
             np.clip(base_w / max(1e-5, self.cfg.angular_limit), -1.0, 1.0),
-            2.0 * front_scan - 1.0,
-            2.0 * min_scan - 1.0,
+            *lidar_features,
+            float(self.prev_action[0]),
+            float(self.prev_action[1]),
         ], dtype=np.float32)

@@ -119,12 +119,10 @@ class PMP:
         target_yaw = np.arctan2(dy, dx)
         yaw_err = wrap_angle(target_yaw - theta)
 
-        # Улучшенная инициализация costate
-        # psi[0:2] управляют линейной скоростью (направление к цели)
+
         self.psi[0] = dir_x
         self.psi[1] = dir_y
-        # psi[2] управляет угловой скоростью (ошибка угла)
-        # Более чувствительно к большим ошибкам угла
+
         self.psi[2] = self.psi_theta_gain * np.tanh(yaw_err)
 
     def costate_dynamics(self, state, control, psi):
@@ -155,7 +153,6 @@ class PMP:
         if self.path is not None and len(self.path) > 0:
             goal = self.path[-1]
             dist_goal = np.linalg.norm(state[:2] - goal)
-            # Более плавное ограничение скорости - не падает так резко близко к цели
             v_limit = min(self.v_max, max(0.1, 0.5 * dist_goal + 0.05))
             v = clip(v, -v_limit if self.use_reverse else 0.0, v_limit)
 

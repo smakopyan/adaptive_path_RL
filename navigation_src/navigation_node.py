@@ -17,8 +17,7 @@ try:
 except ModuleNotFoundError:
     from navigation_src.D_star import DStar
     from navigation_src.PMP import PMP
-# Robot safety buffer around obstacles (~0.25m at 0.05m/cell resolution)
-# Too large → paths hug walls; too small → collision risk
+
 EXPANSION_SIZE = 10
 
 
@@ -172,7 +171,6 @@ class Navigation(Node):
 
         path_xy = np.array(self.path_world, dtype=float)
         if self.pmp is None:
-            # Use larger lookahead for smoother path following
             self.pmp = PMP(self.x, self.y, self.yaw, path_xy, lookahead_dist=0.5)
         else:
             self.pmp.set_path(path_xy)
@@ -218,11 +216,9 @@ class Navigation(Node):
 
         if self.laser_data:
             n = len(self.laser_data)
-            # Охватываем более широкие углы для обнаружения препятствий (+-45 градусов)
             left_range = (int(0.125 * n), int(0.375 * n))   # левые 45 градусов
             right_range = (int(0.625 * n), int(0.875 * n))  # правые 45 градусов
             
-            # Более мягкий порог, чем 0.3м
             obstacle_threshold = 0.4
             left_block = any(self.laser_data[i] < obstacle_threshold for i in range(*left_range) if self.laser_data[i] > 0.0)
             right_block = any(self.laser_data[i] < obstacle_threshold for i in range(*right_range) if self.laser_data[i] > 0.0)

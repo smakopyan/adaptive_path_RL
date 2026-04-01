@@ -116,7 +116,7 @@ def parse_args():
     p.add_argument("--buffer-size", type=int, default=300000)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--cuda", action="store_true")
-    p.add_argument("--model-out", default="DRL/models/td3_actor.pt")
+    p.add_argument("--model-out", default="DRL/models/td3_actor_AL.pt")
 
     p.add_argument("--map-topic", default="/map")
     p.add_argument("--odom-topic", default="/odom")

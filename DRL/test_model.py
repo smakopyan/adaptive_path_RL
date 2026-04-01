@@ -81,7 +81,7 @@ def run(args):
 
 def parse_args():
     p = argparse.ArgumentParser(description="Test TD3 policy over ROS topics (/map,/odom,/scan,/cmd_vel)")
-    p.add_argument("--model-path", default="DRL/models/td3_actor.pt", help="Path to saved actor weights")
+    p.add_argument("--model-path", default="DRL/models/td3_actor_AL.pt", help="Path to saved actor weights")
     p.add_argument("--episodes", type=int, default=100)
     p.add_argument("--max-steps", type=int, default=2000)
     p.add_argument("--dt", type=float, default=0.10)
